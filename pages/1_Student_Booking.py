@@ -22,7 +22,7 @@ st.write("Book your AT Lab oral exam appointment.")
 # -----------------------------
 st.header("Step 1: Find Yourself")
 
-search = st.text_input("Enter your Cuesta username (same as your email without the @my.cuesta.edu.")
+search = st.text_input("Enter your Cuesta username (same as your email without the @my.cuesta.edu).")
 
 student_selected = None
 
