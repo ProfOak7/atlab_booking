@@ -36,14 +36,15 @@ def get_all_enrollments(course_id):
             url = None
 
     return all_results
-    
+
+
 def find_student_across_courses(search_value, course_ids):
     """
-    search_value = email or name (we'll use email first)
+    search_value = Cuesta username, email, or name
     course_ids = list of Canvas course IDs
     """
-
     matches = []
+    search_value = search_value.strip().lower()
 
     for course_id in course_ids:
         enrollments = get_all_enrollments(course_id)
@@ -52,11 +53,19 @@ def find_student_across_courses(search_value, course_ids):
             continue
 
         for e in enrollments:
-            user = e.get("user", {})
+            user = e.get("user", {})  
+
             login_id = user.get("login_id", "").lower()
             name = user.get("name", "").lower()
 
-            if search_value.lower() in login_id or search_value.lower() in name:
+            # Extract username from email
+            username = login_id.split("@")[0] if "@" in login_id else login_id
+
+            if (
+                search_value == username or
+                search_value in login_id or
+                search_value in name
+            ):
                 matches.append({
                     "canvas_user_id": user.get("id"),
                     "name": user.get("name"),
