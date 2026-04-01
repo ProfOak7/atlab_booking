@@ -416,3 +416,92 @@ def generate_slots_from_templates(
             current_date += timedelta(days=1)
 
     return added
+
+def get_active_terms():
+    with get_connection() as conn:
+        rows = conn.execute("""
+            SELECT *
+            FROM terms
+            WHERE active = 1
+            ORDER BY term_name
+        """).fetchall()
+        return [dict(row) for row in rows]
+
+
+def get_exams_by_term(term_id: int):
+    with get_connection() as conn:
+        rows = conn.execute("""
+            SELECT *
+            FROM exams
+            WHERE term_id = ? AND active = 1
+            ORDER BY exam_number
+        """, (term_id,)).fetchall()
+        return [dict(row) for row in rows]
+
+
+def get_available_slots_for_exam(exam_id: int):
+    with get_connection() as conn:
+        rows = conn.execute("""
+            SELECT s.*
+            FROM slots s
+            WHERE s.exam_id = ?
+              AND s.active = 1
+              AND (
+                    SELECT COUNT(*)
+                    FROM bookings b
+                    WHERE b.slot_id = s.slot_id
+                      AND b.status = 'booked'
+                  ) < s.capacity
+            ORDER BY s.start_time
+        """, (exam_id,)).fetchall()
+        return [dict(row) for row in rows]
+
+
+def get_slot_by_id(slot_id: int):
+    with get_connection() as conn:
+        row = conn.execute("""
+            SELECT s.*, e.exam_id, e.exam_number, e.exam_name, e.term_id
+            FROM slots s
+            JOIN exams e ON s.exam_id = e.exam_id
+            WHERE s.slot_id = ?
+        """, (slot_id,)).fetchone()
+        return dict(row) if row else None
+
+
+def student_has_booking_same_exam_same_week(canvas_user_id: str, exam_id: int, slot_start_time: str):
+    """
+    Prevent booking more than one appointment in the same week for the same exam.
+    """
+    with get_connection() as conn:
+        row = conn.execute("""
+            SELECT b.booking_id, s.start_time
+            FROM bookings b
+            JOIN slots s ON b.slot_id = s.slot_id
+            WHERE b.canvas_user_id = ?
+              AND b.status = 'booked'
+              AND s.exam_id = ?
+        """, (canvas_user_id, exam_id)).fetchall()
+
+        if not row:
+            return False
+
+        from datetime import datetime, timedelta
+
+        target_dt = datetime.strptime(slot_start_time, "%Y-%m-%d %H:%M")
+        target_week_start = target_dt.date() - timedelta(days=target_dt.weekday())
+        target_week_end = target_week_start + timedelta(days=6)
+
+        for existing in row:
+            existing_dt = datetime.strptime(existing["start_time"], "%Y-%m-%d %H:%M")
+            if target_week_start <= existing_dt.date() <= target_week_end:
+                return True
+
+        return False
+
+
+def create_booking(slot_id: int, canvas_user_id: str, canvas_course_id: str = "", section_id: str = ""):
+    with get_connection() as conn:
+        conn.execute("""
+            INSERT INTO bookings (slot_id, canvas_user_id, canvas_course_id, section_id, status)
+            VALUES (?, ?, ?, ?, 'booked')
+        """, (slot_id, canvas_user_id, canvas_course_id, section_id))
