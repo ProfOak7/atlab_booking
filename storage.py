@@ -1,6 +1,7 @@
 import os
 import sqlite3
 from contextlib import contextmanager
+from datetime import datetime, timedelta
 
 DB_PATH = os.path.join("data", "app.db")
 
@@ -205,3 +206,18 @@ def seed_default_lab_exams(term_id: int) -> int:
                 added_count += 1
 
     return added_count
+
+def init_availability_tables() -> None:
+    with get_connection() as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS availability_templates (
+                template_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                term_id INTEGER NOT NULL,
+                location TEXT NOT NULL,
+                day_of_week INTEGER NOT NULL,   -- 0=Monday, 6=Sunday
+                start_time TEXT NOT NULL,       -- HH:MM
+                end_time TEXT NOT NULL,         -- HH:MM
+                active INTEGER NOT NULL DEFAULT 1,
+                FOREIGN KEY (term_id) REFERENCES terms(term_id)
+            )
+        """)
