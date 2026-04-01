@@ -72,6 +72,7 @@ if is_admin:
         st.Page("pages/3_Admin_Course_Shells.py", title="Admin: Course Shells", icon="🏫"),
         st.Page("pages/4_Admin_Exams.py", title="Admin: Exams", icon="🧪"),
         st.Page("pages/5_Admin_Slots.py", title="Admin: Slots", icon="⏰"),
+        st.Page("pages/6_Admin_Bookings.py", title="Admin: Bookings", icon="📚"),
     ]
 
 nav_sections = {"Student": student_pages}
