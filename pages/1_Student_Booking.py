@@ -28,7 +28,7 @@ student_selected = None
 
 if st.button("Find Me"):
     if not search.strip():
-        st.error("Please enter your email.")
+        st.error("Please enter your cuesta username (same as your email without the @my.cuesta.edu.")
     else:
         courses = get_courses()
         course_ids = [c["canvas_course_id"] for c in courses]
