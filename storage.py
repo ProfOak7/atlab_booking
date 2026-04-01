@@ -505,3 +505,70 @@ def create_booking(slot_id: int, canvas_user_id: str, canvas_course_id: str = ""
             INSERT INTO bookings (slot_id, canvas_user_id, canvas_course_id, section_id, status)
             VALUES (?, ?, ?, ?, 'booked')
         """, (slot_id, canvas_user_id, canvas_course_id, section_id))
+
+def get_all_bookings():
+    with get_connection() as conn:
+        rows = conn.execute("""
+            SELECT
+                b.booking_id,
+                b.canvas_user_id,
+                b.canvas_course_id,
+                b.section_id,
+                b.status,
+                b.created_at,
+                b.updated_at,
+                s.slot_id,
+                s.start_time,
+                s.end_time,
+                s.location,
+                e.exam_id,
+                e.exam_number,
+                e.exam_name,
+                t.term_id,
+                t.term_name
+            FROM bookings b
+            JOIN slots s ON b.slot_id = s.slot_id
+            JOIN exams e ON s.exam_id = e.exam_id
+            JOIN terms t ON e.term_id = t.term_id
+            ORDER BY s.start_time
+        """).fetchall()
+        return [dict(row) for row in rows]
+
+
+def cancel_booking(booking_id: int) -> None:
+    with get_connection() as conn:
+        conn.execute("""
+            UPDATE bookings
+            SET status = 'cancelled',
+                updated_at = CURRENT_TIMESTAMP
+            WHERE booking_id = ?
+        """, (booking_id,))
+
+
+def get_booking_by_id(booking_id: int):
+    with get_connection() as conn:
+        row = conn.execute("""
+            SELECT
+                b.booking_id,
+                b.canvas_user_id,
+                b.canvas_course_id,
+                b.section_id,
+                b.status,
+                b.created_at,
+                b.updated_at,
+                s.slot_id,
+                s.start_time,
+                s.end_time,
+                s.location,
+                e.exam_id,
+                e.exam_number,
+                e.exam_name,
+                t.term_id,
+                t.term_name
+            FROM bookings b
+            JOIN slots s ON b.slot_id = s.slot_id
+            JOIN exams e ON s.exam_id = e.exam_id
+            JOIN terms t ON e.term_id = t.term_id
+            WHERE b.booking_id = ?
+        """, (booking_id,)).fetchone()
+        return dict(row) if row else None
