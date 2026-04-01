@@ -9,10 +9,7 @@ HEADERS = {
 }
 
 
-def get_course_enrollments(course_id):
-    """
-    Get all enrollments for a course.
-    """
+def get_all_enrollments(course_id):
     url = f"{BASE_URL}/api/v1/courses/{course_id}/enrollments"
 
     params = {
@@ -20,23 +17,22 @@ def get_course_enrollments(course_id):
         "per_page": 100
     }
 
-    response = requests.get(url, headers=HEADERS, params=params)
+    all_results = []
 
-    if response.status_code != 200:
-        return None
+    while url:
+        response = requests.get(url, headers=HEADERS, params=params)
 
-    return response.json()
+        if response.status_code != 200:
+            return None
 
+        data = response.json()
+        all_results.extend(data)
 
-def get_user_profile(user_id):
-    """
-    Get user profile by Canvas user ID.
-    """
-    url = f"{BASE_URL}/api/v1/users/{user_id}/profile"
+        # Handle pagination
+        if "next" in response.links:
+            url = response.links["next"]["url"]
+            params = {}  # important: don't reuse params after first call
+        else:
+            url = None
 
-    response = requests.get(url, headers=HEADERS)
-
-    if response.status_code != 200:
-        return None
-
-    return response.json()
+    return all_results
