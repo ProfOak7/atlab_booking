@@ -106,6 +106,20 @@ def init_db() -> None:
                 FOREIGN KEY (exam_id) REFERENCES exams(exam_id)
             )
         """)
+        
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS availability_templates (
+                template_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                term_id INTEGER NOT NULL,
+                location TEXT NOT NULL,
+                day_of_week INTEGER NOT NULL,
+                start_time TEXT NOT NULL,
+                end_time TEXT NOT NULL,
+                active INTEGER NOT NULL DEFAULT 1,
+                FOREIGN KEY (term_id) REFERENCES terms(term_id)
+            )
+        """)
+
 
 
 def get_terms():
@@ -221,3 +235,184 @@ def init_availability_tables() -> None:
                 FOREIGN KEY (term_id) REFERENCES terms(term_id)
             )
         """)
+
+def get_exam_options():
+    with get_connection() as conn:
+        rows = conn.execute("""
+            SELECT e.exam_id, e.exam_number, e.exam_name, t.term_name
+            FROM exams e
+            JOIN terms t ON e.term_id = t.term_id
+            WHERE e.active = 1
+            ORDER BY t.term_name, e.exam_number
+        """).fetchall()
+        return [dict(row) for row in rows]
+
+
+def add_availability_template(term_id: int, location: str, day_of_week: int, start_time: str, end_time: str) -> None:
+    with get_connection() as conn:
+        conn.execute("""
+            INSERT INTO availability_templates (term_id, location, day_of_week, start_time, end_time, active)
+            VALUES (?, ?, ?, ?, ?, 1)
+        """, (term_id, location, day_of_week, start_time, end_time))
+
+
+def get_availability_templates(term_id: int = None):
+    with get_connection() as conn:
+        if term_id is None:
+            rows = conn.execute("""
+                SELECT at.*, t.term_name
+                FROM availability_templates at
+                JOIN terms t ON at.term_id = t.term_id
+                ORDER BY t.term_name, at.location, at.day_of_week, at.start_time
+            """).fetchall()
+        else:
+            rows = conn.execute("""
+                SELECT at.*, t.term_name
+                FROM availability_templates at
+                JOIN terms t ON at.term_id = t.term_id
+                WHERE at.term_id = ?
+                ORDER BY at.location, at.day_of_week, at.start_time
+            """, (term_id,)).fetchall()
+        return [dict(row) for row in rows]
+
+
+def delete_availability_template(template_id: int) -> None:
+    with get_connection() as conn:
+        conn.execute("""
+            DELETE FROM availability_templates
+            WHERE template_id = ?
+        """, (template_id,))
+
+
+def seed_default_availability(term_id: int) -> int:
+    """
+    Seed default location availability:
+    SLO: Mon-Fri 09:00-17:00, Sat 09:00-13:00
+    NCC: Mon-Fri 09:00-17:00
+    """
+    defaults = []
+
+    # SLO Mon-Fri
+    for day in range(0, 5):
+        defaults.append((term_id, "SLO", day, "09:00", "17:00"))
+
+    # SLO Saturday
+    defaults.append((term_id, "SLO", 5, "09:00", "13:00"))
+
+    # NCC Mon-Fri
+    for day in range(0, 5):
+        defaults.append((term_id, "NCC", day, "09:00", "17:00"))
+
+    added = 0
+
+    with get_connection() as conn:
+        for row in defaults:
+            exists = conn.execute("""
+                SELECT 1
+                FROM availability_templates
+                WHERE term_id = ? AND location = ? AND day_of_week = ?
+                  AND start_time = ? AND end_time = ?
+                LIMIT 1
+            """, row).fetchone()
+
+            if exists is None:
+                conn.execute("""
+                    INSERT INTO availability_templates
+                    (term_id, location, day_of_week, start_time, end_time, active)
+                    VALUES (?, ?, ?, ?, ?, 1)
+                """, row)
+                added += 1
+
+    return added
+
+
+def add_slot(exam_id: int, start_time: str, end_time: str, location: str, capacity: int = 1) -> None:
+    with get_connection() as conn:
+        conn.execute("""
+            INSERT INTO slots (exam_id, start_time, end_time, location, capacity, active)
+            VALUES (?, ?, ?, ?, ?, 1)
+        """, (exam_id, start_time, end_time, location, capacity))
+
+
+def get_slots():
+    with get_connection() as conn:
+        rows = conn.execute("""
+            SELECT s.*, e.exam_number, e.exam_name, t.term_name
+            FROM slots s
+            JOIN exams e ON s.exam_id = e.exam_id
+            JOIN terms t ON e.term_id = t.term_id
+            ORDER BY s.start_time
+        """).fetchall()
+        return [dict(row) for row in rows]
+
+
+def generate_slots_from_templates(
+    exam_id: int,
+    term_id: int,
+    date_start: str,
+    date_end: str,
+    slot_minutes: int,
+    capacity: int = 1
+) -> int:
+    """
+    Generate slots for the given exam using availability templates
+    between date_start and date_end inclusive.
+    """
+    with get_connection() as conn:
+        templates = conn.execute("""
+            SELECT *
+            FROM availability_templates
+            WHERE term_id = ? AND active = 1
+            ORDER BY location, day_of_week, start_time
+        """, (term_id,)).fetchall()
+
+        if not templates:
+            return 0
+
+        start_date = datetime.strptime(date_start, "%Y-%m-%d").date()
+        end_date = datetime.strptime(date_end, "%Y-%m-%d").date()
+
+        added = 0
+        current_date = start_date
+
+        while current_date <= end_date:
+            weekday = current_date.weekday()
+
+            matching_templates = [t for t in templates if t["day_of_week"] == weekday]
+
+            for template in matching_templates:
+                start_dt = datetime.strptime(
+                    f"{current_date} {template['start_time']}",
+                    "%Y-%m-%d %H:%M"
+                )
+                end_dt = datetime.strptime(
+                    f"{current_date} {template['end_time']}",
+                    "%Y-%m-%d %H:%M"
+                )
+
+                slot_start = start_dt
+                while slot_start + timedelta(minutes=slot_minutes) <= end_dt:
+                    slot_end = slot_start + timedelta(minutes=slot_minutes)
+
+                    start_iso = slot_start.strftime("%Y-%m-%d %H:%M")
+                    end_iso = slot_end.strftime("%Y-%m-%d %H:%M")
+
+                    exists = conn.execute("""
+                        SELECT 1
+                        FROM slots
+                        WHERE exam_id = ? AND start_time = ? AND end_time = ? AND location = ?
+                        LIMIT 1
+                    """, (exam_id, start_iso, end_iso, template["location"])).fetchone()
+
+                    if exists is None:
+                        conn.execute("""
+                            INSERT INTO slots (exam_id, start_time, end_time, location, capacity, active)
+                            VALUES (?, ?, ?, ?, ?, 1)
+                        """, (exam_id, start_iso, end_iso, template["location"], capacity))
+                        added += 1
+
+                    slot_start = slot_end
+
+            current_date += timedelta(days=1)
+
+    return added
