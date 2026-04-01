@@ -138,3 +138,70 @@ def add_course(term_id: int, canvas_course_id: str, course_name: str, section_na
             INSERT INTO course_registry (term_id, canvas_course_id, course_name, section_name, notes)
             VALUES (?, ?, ?, ?, ?)
         """, (term_id, canvas_course_id, course_name, section_name, notes))
+
+def get_exams():
+    with get_connection() as conn:
+        rows = conn.execute("""
+            SELECT e.*, t.term_name
+            FROM exams e
+            JOIN terms t ON e.term_id = t.term_id
+            ORDER BY t.term_name, e.exam_number
+        """).fetchall()
+        return [dict(row) for row in rows]
+
+
+def add_exam(term_id: int, exam_number: int, exam_name: str, active: int = 1) -> None:
+    with get_connection() as conn:
+        conn.execute("""
+            INSERT INTO exams (term_id, exam_number, exam_name, active)
+            VALUES (?, ?, ?, ?)
+        """, (term_id, exam_number, exam_name, active))
+
+
+def exam_exists(term_id: int, exam_number: int) -> bool:
+    with get_connection() as conn:
+        row = conn.execute("""
+            SELECT 1
+            FROM exams
+            WHERE term_id = ? AND exam_number = ?
+            LIMIT 1
+        """, (term_id, exam_number)).fetchone()
+        return row is not None
+
+
+def seed_default_lab_exams(term_id: int) -> int:
+    """
+    Seed Lab Exams 2-10 for a given term.
+    Returns the number of exams added.
+    """
+    default_exams = [
+        (2, "Cytology, Histology, & the Integumentary System"),
+        (3, "Skeletal System"),
+        (4, "Muscular System"),
+        (5, "Nervous System"),
+        (6, "Endocrine and Sensory Systems"),
+        (7, "Circulatory System"),
+        (8, "Respiratory System"),
+        (9, "Digestive System"),
+        (10, "Urinary and Reproductive System"),
+    ]
+
+    added_count = 0
+
+    with get_connection() as conn:
+        for exam_number, exam_name in default_exams:
+            row = conn.execute("""
+                SELECT 1
+                FROM exams
+                WHERE term_id = ? AND exam_number = ?
+                LIMIT 1
+            """, (term_id, exam_number)).fetchone()
+
+            if row is None:
+                conn.execute("""
+                    INSERT INTO exams (term_id, exam_number, exam_name, active)
+                    VALUES (?, ?, ?, 1)
+                """, (term_id, exam_number, exam_name))
+                added_count += 1
+
+    return added_count
