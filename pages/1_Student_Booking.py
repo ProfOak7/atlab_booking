@@ -22,13 +22,13 @@ st.write("Book your AT Lab oral exam appointment.")
 # -----------------------------
 st.header("Step 1: Find Yourself")
 
-search = st.text_input("Enter your Cuesta email")
+search = st.text_input("Enter your Cuesta username (same as your email without the @my.cuesta.edu.")
 
 student_selected = None
 
 if st.button("Find Me"):
     if not search.strip():
-        st.error("Please enter your cuesta username (same as your email without the @my.cuesta.edu.")
+        st.error("Please enter your cuesta username")
     else:
         courses = get_courses()
         course_ids = [c["canvas_course_id"] for c in courses]
